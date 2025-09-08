@@ -21,7 +21,7 @@ import {
   Volume1,
   Volume
 } from "lucide-react";
-import useHumeInference, { INFERENCE_STATES } from "@/hooks/useHumeInference";
+import useUnifiedVoiceAgent, { INFERENCE_STATES } from "@/hooks/useUnifiedVoiceAgent";
 import { toast } from "sonner";
 
 const Inference = () => {
@@ -30,6 +30,7 @@ const Inference = () => {
   const [backgroundVolume, setBackgroundVolume] = useState(0.3);
   const [isBackgroundAudioPlaying, setIsBackgroundAudioPlaying] = useState(false);
   const [selectedAudioFile, setSelectedAudioFile] = useState('background-chatter.mp3');
+  const [usePublicEndpoint, setUsePublicEndpoint] = useState(false);
   const backgroundAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const {
@@ -46,8 +47,9 @@ const Inference = () => {
     saveTranscription,
     clearTranscription,
     transcriptionUpdateTrigger
-  } = useHumeInference({
-    agentId: agentId
+  } = useUnifiedVoiceAgent({
+    agentId: agentId || '',
+    usePublicEndpoint
   });
 
   const handleStartInference = () => {

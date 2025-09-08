@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { Agent } from "@/types/agent";
 import { VoiceSelector } from "@/components/ui/voice-selector";
 import { ToolSelector } from "@/components/ui/tool-selector";
+import { useVoices } from "@/contexts/VoiceContext";
 
 interface EditAgentModalProps {
   isOpen: boolean;
@@ -23,7 +24,7 @@ interface EditAgentModalProps {
 // Voice options are now managed in the centralized voiceConfig.ts file
 
 const modelOptions = [
-  { provider: "VOICECAKE", simpleName: "voicecake STS", displayName: "VoiceCake STS" },
+  { provider: "HUME_AI", simpleName: "voicecake STS", displayName: "VoiceCake STS" },
   { provider: "OPEN_AI", simpleName: "gpt-5", displayName: "GPT 5" },
   { provider: "OPEN_AI", simpleName: "gpt-5-mini", displayName: "GPT 5 Mini" },
   { provider: "OPEN_AI", simpleName: "gpt-5-nano", displayName: "GPT 5 Nano" },
@@ -81,6 +82,7 @@ export function EditAgentModal({ isOpen, onClose, onSubmit, agent }: EditAgentMo
   });
   const [isLoading, setIsLoading] = useState(false);
   const [selectedAgentType, setSelectedAgentType] = useState<'SPEECH' | 'TEXT' | null>(null);
+  const { findHamsaVoiceByName, findHamsaVoiceById } = useVoices();
 
   // Helper function to get agent type display info
   const getAgentTypeInfo = () => {
@@ -110,11 +112,20 @@ export function EditAgentModal({ isOpen, onClose, onSubmit, agent }: EditAgentMo
       const agentType = agent.agent_type || agent.type || 'SPEECH';
       setSelectedAgentType(agentType as 'SPEECH' | 'TEXT');
       
+      // For Hamsa agents, convert speaker name back to voice ID
+      let voiceId = agent.voice_id || "";
+      if (voiceProvider === "hamsa" && agent.voice_id) {
+        const matchingVoice = findHamsaVoiceByName(agent.voice_id);
+        if (matchingVoice) {
+          voiceId = matchingVoice.id; // Use the UUID instead of speaker name
+        }
+      }
+      
       const newFormData = {
         name: agent.name || "",
         description: agent.description || "",
         voice_provider: voiceProvider,
-        voice: agent.voice_id || "",
+        voice: voiceId,
         model_provider: agent.model_provider || "",
         model_resource: (agent as Agent & { model_resource?: string }).model_resource || "",
         instructions: agent.custom_instructions || "",
@@ -136,7 +147,7 @@ export function EditAgentModal({ isOpen, onClose, onSubmit, agent }: EditAgentMo
       });
       setSelectedAgentType(null);
     }
-  }, [agent]);
+  }, [agent, findHamsaVoiceByName]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -151,7 +162,8 @@ export function EditAgentModal({ isOpen, onClose, onSubmit, agent }: EditAgentMo
     
     // Validate required fields based on agent type
     if (selectedAgentType === 'SPEECH') {
-      if (!formData.name || !formData.description || !formData.voice_provider || !formData.voice || !formData.model_resource) {
+      // For STS agents, require voice selection from Hume
+      if (!formData.name || !formData.description || !formData.voice || !formData.model_resource) {
         toast.error("Please fill in all required fields for Speech-To-Speech agent");
         return;
       }
@@ -165,11 +177,20 @@ export function EditAgentModal({ isOpen, onClose, onSubmit, agent }: EditAgentMo
     setIsLoading(true);
     
     try {
+      // For Hamsa TTS, we need to get the speaker name from the selected voice
+      let voiceId = formData.voice;
+      if (formData.voice_provider === "hamsa") {
+        const selectedVoice = findHamsaVoiceById(formData.voice);
+        if (selectedVoice) {
+          voiceId = selectedVoice.name; // Use speaker name for Hamsa
+        }
+      }
+
       // Map form data to backend expected format
       const agentData = {
         name: formData.name,
-        voice_provider: formData.voice_provider === "voicecake" ? "hume" : formData.voice_provider, // VoiceCake masks Hume
-        voice_id: formData.voice,
+        voice_provider: selectedAgentType === 'SPEECH' ? "hume" : (formData.voice_provider === "voicecake" ? "hume" : formData.voice_provider),
+        voice_id: voiceId, // Include voice_id for both STS and TTS agents
         description: formData.description,
         custom_instructions: formData.instructions,
         model_provider: formData.model_provider,
@@ -270,49 +291,78 @@ export function EditAgentModal({ isOpen, onClose, onSubmit, agent }: EditAgentMo
               <h3 className="font-semibold text-lg">Voice & Personality</h3>
               
               <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>TTS Provider</Label>
-                  <Select 
-                    value={formData.voice_provider} 
-                    onValueChange={(value) => {
-                      setFormData(prev => ({ 
-                        ...prev, 
-                        voice_provider: value,
-                        voice: "" // Reset voice when provider changes
-                      }));
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a TTS provider" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="voicecake">
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full bg-blue-500" />
-                          VoiceCake
-                        </div>
-                      </SelectItem>
-                      <SelectItem value="cartesia">
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full bg-green-500" />
-                          Cartesia
-                        </div>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                {selectedAgentType === 'SPEECH' ? (
+                  // For STS agents, show Hume voice selection
+                  <div className="space-y-4">
+                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-2 h-2 rounded-full bg-blue-500" />
+                        <span className="font-medium text-blue-900">Hume EVI Integration</span>
+                      </div>
+                      <p className="text-sm text-blue-700">
+                        Speech-To-Speech agent using Hume's Empathic Voice Interface with advanced emotional intelligence.
+                      </p>
+                    </div>
+                    
+                    <VoiceSelector
+                      value={formData.voice}
+                      onValueChange={(value) => setFormData(prev => ({ ...prev, voice: value }))}
+                      provider="voicecake"
+                      placeholder="Select a Hume voice"
+                    />
+                  </div>
+                ) : (
+                  // For TTS agents, show provider selection
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>TTS Provider</Label>
+                      <Select 
+                        value={formData.voice_provider} 
+                        onValueChange={(value) => {
+                          setFormData(prev => ({ 
+                            ...prev, 
+                            voice_provider: value,
+                            voice: "" // Reset voice when provider changes
+                          }));
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a TTS provider" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="voicecake">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-blue-500" />
+                              VoiceCake
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="cartesia">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-green-500" />
+                              Cartesia
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="hamsa">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-purple-500" />
+                              Hamsa
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-                {formData.voice_provider && (
-                  <VoiceSelector
-                    value={formData.voice}
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, voice: value }))}
-                    provider={formData.voice_provider}
-                    placeholder="Select a voice"
-                  />
+                    {formData.voice_provider && (
+                      <VoiceSelector
+                        value={formData.voice}
+                        onValueChange={(value) => setFormData(prev => ({ ...prev, voice: value }))}
+                        provider={formData.voice_provider}
+                        placeholder="Select a voice"
+                      />
+                    )}
+                  </div>
                 )}
-              </div>
-
-              {/* AI Model - Only for Speech-To-Speech */}
+                {/* AI Model - Only for Speech-To-Speech */}
               {selectedAgentType === 'SPEECH' && (
                 <div className="space-y-2">
                   <Label>AI Model</Label>
@@ -348,6 +398,7 @@ export function EditAgentModal({ isOpen, onClose, onSubmit, agent }: EditAgentMo
                   </Select>
                 </div>
               )}
+              </div>
             </div>
 
             {/* Instructions - Always shown when agent type is selected */}

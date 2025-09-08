@@ -5,9 +5,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Mic, Search, Filter } from "lucide-react";
-import { VoiceOption, getVoicesByProvider, getCategoriesByProvider, searchVoices } from "@/lib/voiceConfig";
-import { voiceCloneAPI } from "@/pages/services/api";
-import type { VoiceCloneResponse } from "@/types/voice";
+import { VoiceOption } from "@/lib/voiceConfig";
+import { useVoices } from "@/contexts/VoiceContext";
 
 interface VoiceSelectorProps {
   value: string;
@@ -17,16 +16,6 @@ interface VoiceSelectorProps {
   disabled?: boolean;
   className?: string;
 }
-
-// Transform voice clone API response to VoiceOption
-const transformVoiceClone = (voiceClone: VoiceCloneResponse): VoiceOption => ({
-  id: voiceClone.provider_voice_id,
-  name: voiceClone.name,
-  provider: voiceClone.provider || "custom",
-  category: "Custom Clones",
-  description: voiceClone.description || "Custom cloned voice",
-  language: voiceClone.language,
-});
 
 export function VoiceSelector({ 
   value, 
@@ -38,11 +27,7 @@ export function VoiceSelector({
 }: VoiceSelectorProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [clonedVoices, setClonedVoices] = useState<VoiceOption[]>([]);
-  const [isLoadingClones, setIsLoadingClones] = useState(false);
-
-  // Get static voices for the provider
-  const staticVoices = useMemo(() => getVoicesByProvider(provider), [provider]);
+  const { getVoicesByProvider, isLoading } = useVoices();
 
   // Reset filters when provider changes
   useEffect(() => {
@@ -50,32 +35,10 @@ export function VoiceSelector({
     setSelectedCategory("all");
   }, [provider]);
 
-  // Fetch voice clones on mount
-  useEffect(() => {
-    const fetchVoiceClones = async () => {
-      setIsLoadingClones(true);
-      try {
-        const voiceClones = await voiceCloneAPI.getVoiceClones();
-        const transformedClones = voiceClones.map(transformVoiceClone);
-        setClonedVoices(transformedClones);
-      } catch (error) {
-        console.error('Error fetching voice clones:', error);
-        setClonedVoices([]);
-      } finally {
-        setIsLoadingClones(false);
-      }
-    };
-
-    fetchVoiceClones();
-  }, []);
-
-  // Combine static and cloned voices
+  // Get all voices for the provider from context
   const allProviderVoices = useMemo(() => {
-    if (provider === "custom") {
-      return clonedVoices;
-    }
-    return [...staticVoices, ...clonedVoices];
-  }, [staticVoices, clonedVoices, provider]);
+    return getVoicesByProvider(provider);
+  }, [provider, getVoicesByProvider]);
   
   // Get categories for all voices
   const categories = useMemo(() => {
@@ -216,7 +179,7 @@ export function VoiceSelector({
         {filteredVoices.length} of {allProviderVoices.length} voices
         {searchTerm && ` matching "${searchTerm}"`}
         {selectedCategory !== "all" && ` in ${selectedCategory}`}
-        {isLoadingClones && " (loading custom voices...)"}
+        {(isLoading.hamsa || isLoading.custom) && " (loading...)"}
       </div>
     </div>
   );

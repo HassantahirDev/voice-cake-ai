@@ -19,6 +19,7 @@ import VoiceClone from "./pages/VoiceClone";
 import Settings from "./pages/Settings";
 import { AuthProvider } from "./context/authContext";
 import { FinanceProvider } from "@/context/financeContext";
+import { VoiceProvider } from "@/contexts/VoiceContext";
 import PlanSelection from "./pages/PlanSelection";
 import PlanPurchase from "./pages/PlanPurchase";
 import UsageDashboard from "./pages/UsageDashboard";
@@ -36,10 +37,11 @@ const App = () => {
     <AuthProvider>
     <QueryClientProvider client={queryClient}>
       <FinanceProvider>
-        <TooltipProvider> 
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
+        <VoiceProvider>
+          <TooltipProvider> 
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
             <Routes>
               {/* Landing and marketing pages */}
               <Route path="/" element={<Landing />} /> 
@@ -138,8 +140,9 @@ const App = () => {
               {/* Catch-all */}
               <Route path="*" element={<NotFound />} />
             </Routes>
-          </BrowserRouter>
-        </TooltipProvider>
+            </BrowserRouter>
+          </TooltipProvider>
+        </VoiceProvider>
       </FinanceProvider>
     </QueryClientProvider>
     </AuthProvider>

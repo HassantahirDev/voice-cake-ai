@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { AgentType } from "@/types/agent";
 import { VoiceSelector } from "@/components/ui/voice-selector";
 import { ToolSelector } from "@/components/ui/tool-selector";
+import { useVoices } from "@/contexts/VoiceContext";
 
 interface CreateAgentModalProps {
   isOpen: boolean;
@@ -23,7 +24,7 @@ interface CreateAgentModalProps {
 // Voice options are now managed in the centralized voiceConfig.ts file
 
 const modelOptions = [
-  { provider: "VOICECAKE", simpleName: "voicecake STS", displayName: "VoiceCake STS" },
+  { provider: "HUME_AI", simpleName: "voicecake STS", displayName: "VoiceCake STS" },
   { provider: "OPEN_AI", simpleName: "gpt-5", displayName: "GPT 5" },
   { provider: "OPEN_AI", simpleName: "gpt-5-mini", displayName: "GPT 5 Mini" },
   { provider: "OPEN_AI", simpleName: "gpt-5-nano", displayName: "GPT 5 Nano" },
@@ -69,7 +70,6 @@ const groupedModels = modelOptions.reduce((acc, model) => {
 }, {} as Record<string, typeof modelOptions>);
 
 export function CreateAgentModal({ isOpen, onClose, onSubmit }: CreateAgentModalProps) {
-  const [selectedAgentType, setSelectedAgentType] = useState<AgentType | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -81,6 +81,8 @@ export function CreateAgentModal({ isOpen, onClose, onSubmit }: CreateAgentModal
     tool_ids: [] as string[]
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedAgentType, setSelectedAgentType] = useState<AgentType | null>(null);
+  const { findHamsaVoiceById } = useVoices();
 
   // Reset form when modal is opened
   useEffect(() => {
@@ -116,7 +118,8 @@ export function CreateAgentModal({ isOpen, onClose, onSubmit }: CreateAgentModal
     
     // Validate required fields based on agent type
     if (selectedAgentType === 'SPEECH') {
-      if (!formData.name || !formData.description || !formData.voice_provider || !formData.voice || !formData.model_resource) {
+      // For STS agents, require voice selection from Hume
+      if (!formData.name || !formData.description || !formData.voice || !formData.model_resource) {
         toast.error("Please fill in all required fields for Speech-To-Speech agent");
         return;
       }
@@ -130,11 +133,20 @@ export function CreateAgentModal({ isOpen, onClose, onSubmit }: CreateAgentModal
     setIsLoading(true);
     
     try {
+      // For Hamsa TTS, we need to get the speaker name from the selected voice
+      let voiceId = formData.voice;
+      if (formData.voice_provider === "hamsa") {
+        const selectedVoice = findHamsaVoiceById(formData.voice);
+        if (selectedVoice) {
+          voiceId = selectedVoice.name; // Use speaker name for Hamsa
+        }
+      }
+
       // Map form data to backend expected format
       const agentData = {
         name: formData.name,
-        voice_provider: formData.voice_provider === "voicecake" ? "hume" : formData.voice_provider.toLowerCase(), // VoiceCake masks Hume, ensure lowercase
-        voice_id: formData.voice,
+        voice_provider: selectedAgentType === 'SPEECH' ? "hume" : (formData.voice_provider === "voicecake" ? "hume" : formData.voice_provider.toLowerCase()),
+        voice_id: voiceId, // Include voice_id for both STS and TTS agents
         description: formData.description,
         custom_instructions: formData.instructions,
         model_provider: formData.model_provider,
@@ -295,90 +307,129 @@ export function CreateAgentModal({ isOpen, onClose, onSubmit }: CreateAgentModal
               </>
             )}
 
-            {/* Voice Settings - Always shown */}
+            {/* Voice Settings - Always shown when agent type is selected */}
             {selectedAgentType && (
               <div className="space-y-4">
                 <h3 className="font-semibold text-lg">Voice & Personality</h3>
                 
                 <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>TTS Provider</Label>
-                    <Select 
-                      value={formData.voice_provider} 
-                      onValueChange={(value) => {
-                        setFormData(prev => ({ 
-                          ...prev, 
-                          voice_provider: value,
-                          voice: "" // Reset voice when provider changes
-                        }));
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a TTS provider" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="voicecake">
-                          <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full bg-blue-500" />
-                            VoiceCake
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="cartesia">
-                          <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full bg-green-500" />
-                            Cartesia
-                          </div>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {selectedAgentType === 'SPEECH' ? (
+                    // For STS agents, automatically set to Hume and show voice selection
+                    <div className="space-y-4">
+                      <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="w-2 h-2 rounded-full bg-blue-500" />
+                          <span className="font-medium text-blue-900">Hume EVI Integration</span>
+                        </div>
+                        <p className="text-sm text-blue-700">
+                          Speech-To-Speech agent using Hume's Empathic Voice Interface with advanced emotional intelligence.
+                        </p>
+                      </div>
+                      
+                      <VoiceSelector
+                        value={formData.voice}
+                        onValueChange={(value) => {
+                          setFormData(prev => ({ 
+                            ...prev, 
+                            voice: value,
+                            voice_provider: "voicecake" // Auto-set for STS
+                          }));
+                        }}
+                        provider="voicecake"
+                        placeholder="Select a Hume voice"
+                      />
+                    </div>
+                  ) : (
+                    // For TTS agents, show provider selection
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label>TTS Provider</Label>
+                        <Select 
+                          value={formData.voice_provider} 
+                          onValueChange={(value) => {
+                            setFormData(prev => ({ 
+                              ...prev, 
+                              voice_provider: value,
+                              voice: "" // Reset voice when provider changes
+                            }));
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a TTS provider" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="voicecake">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full bg-blue-500" />
+                                VoiceCake
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="cartesia">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full bg-green-500" />
+                                Cartesia
+                              </div>
+                            </SelectItem>
+                            <SelectItem value="hamsa">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full bg-purple-500" />
+                                Hamsa
+                              </div>
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
 
-                  {formData.voice_provider && (
-                    <VoiceSelector
-                      value={formData.voice}
-                      onValueChange={(value) => setFormData(prev => ({ ...prev, voice: value }))}
-                      provider={formData.voice_provider}
-                      placeholder="Select a voice"
-                    />
+                      {formData.voice_provider && (
+                        <VoiceSelector
+                          value={formData.voice}
+                          onValueChange={(value) => setFormData(prev => ({ ...prev, voice: value }))}
+                          provider={formData.voice_provider}
+                          placeholder="Select a voice"
+                        />
+                      )}
+                    </div>
                   )}
                 </div>
+              </div>
+            )}
 
-                {/* AI Model - Only for Speech-To-Speech */}
-                {selectedAgentType === 'SPEECH' && (
-                  <div className="space-y-2">
-                    <Label>AI Model</Label>
-                    <Select 
-                      value={formData.model_resource} 
-                      onValueChange={(value) => {
-                        const selectedModel = modelOptions.find(model => model.simpleName === value);
-                        setFormData(prev => ({ 
-                          ...prev, 
-                          model_provider: selectedModel?.provider || "",
-                          model_resource: value 
-                        }));
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select an AI model" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.entries(groupedModels).map(([provider, models]) => (
-                          <SelectGroup key={provider}>
-                            <SelectLabel>{provider.replace('_', ' ')}</SelectLabel>
-                            {models.map((model) => (
-                              <SelectItem key={model.simpleName} value={model.simpleName}>
-                                <div className="flex items-center gap-2">
-                                  <div className="w-2 h-2 rounded-full bg-primary" />
-                                  {model.displayName}
-                                </div>
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
+            {/* AI Model - Only for Speech-To-Speech */}
+            {selectedAgentType === 'SPEECH' && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>AI Model</Label>
+                  <Select 
+                    value={formData.model_resource} 
+                    onValueChange={(value) => {
+                      const selectedModel = modelOptions.find(model => model.simpleName === value);
+                      setFormData(prev => ({ 
+                        ...prev, 
+                        model_provider: selectedModel?.provider || "",
+                        model_resource: value 
+                      }));
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select an AI model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(groupedModels).map(([provider, models]) => (
+                        <SelectGroup key={provider}>
+                          <SelectLabel>{provider.replace('_', ' ')}</SelectLabel>
+                          {models.map((model) => (
+                            <SelectItem key={model.simpleName} value={model.simpleName}>
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full bg-primary" />
+                                {model.displayName}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             )}
 

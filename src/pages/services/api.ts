@@ -71,6 +71,15 @@ export const agentAPI = {
   deleteAgent: async (id: string) => {
     const response = await api.delete(`/agents/${id}`);
     return response.data;
+  },
+
+  // LiveKit session creation for authenticated users
+  createLiveKitSession: async (agentId: number) => {
+    const response = await api.post('/livekit/session/start', {
+      agent_id: agentId,
+      participant_name: 'User'
+    });
+    return response.data;
   }
 };
 
@@ -131,6 +140,14 @@ export const voiceCloneAPI = {
     }
     
     const response = await api.post('/voice-clones/', formData);
+    return response.data;
+  }
+};
+
+// Hamsa API functions
+export const hamsaAPI = {
+  getVoices: async (): Promise<any[]> => { // Replace 'any' with a proper type later
+    const response = await api.get('/hamsa/voices');
     return response.data;
   }
 };
