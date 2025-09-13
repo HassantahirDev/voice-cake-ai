@@ -175,7 +175,7 @@ export function EditAgentModal({ isOpen, onClose, onSubmit, agent }: EditAgentMo
     
     try {
       // Map form data to backend expected format
-      const agentData = {
+      const agentData: any = {
         name: formData.name,
         voice_provider: formData.voice_provider === "voicecake" ? "hume" : formData.voice_provider, // VoiceCake masks Hume
         voice_id: formData.voice,
@@ -184,9 +184,13 @@ export function EditAgentModal({ isOpen, onClose, onSubmit, agent }: EditAgentMo
         model_provider: formData.model_provider,
         model_resource: formData.model_resource,
         agent_type: agent.agent_type || agent.type || 'SPEECH',
-        tool_ids: formData.tool_ids,
-        inbound_phone_number: formData.inbound_phone_number
+        tool_ids: formData.tool_ids
       };
+
+      // Only include inbound_phone_number if it has a non-empty, non-null value
+      if (formData.inbound_phone_number && formData.inbound_phone_number.trim() !== '') {
+        agentData.inbound_phone_number = formData.inbound_phone_number;
+      }
 
       const response = await agentAPI.updateAgent(agent.id.toString(), agentData);
       toast.success("Agent updated successfully!");
